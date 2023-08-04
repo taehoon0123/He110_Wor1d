@@ -1,60 +1,208 @@
-import {Comment} from "../entity/Comment";
-import {getConnection} from "typeorm";
-import {Board} from "../entity/Board";
- 
-export class CommentController {
-  static addComment = async (req, res) => {
-    const {board_id, content} = req.body;
- 
-    const board = await getConnection().getRepository(Board).findOne({id: board_id});
- 
-    const comment = new Comment();
-    comment.content = content;
-    comment.board = board;
-    await getConnection().getRepository(Comment).save(comment);
- 
-    res.send(comment);
-  }
- 
-  static findAllComment = async (req, res) => {
-    const {board_id} = req.query;
- 
-    // const boards = await getConnection().getRepository(Comment).find({ where: { board_id: board_id } });
-    const board = await getConnection().getRepository(Board)
-      .findOne({relations: ["comments"], where: {id: board_id}, order: {id: 'DESC'}});
- 
-    res.send(board.comments);
-  }
- 
-  static findOneComment = async (req, res) => {
-    const {id} = req.query;
- 
-    const comment = await getConnection().getRepository(Comment).findOne({id});
-    console.log(comment);
-    res.send(comment);
-  }
- 
-  static modifyComment = async (req, res) => {
-    const {id, content} = req.body;
- 
-    const result = await getConnection().createQueryBuilder().update(Comment)
-      .set({content})
-      .where("id = :id", {id})
-      .execute();
- 
-    res.send(result);
-  }
- 
-  static removeComment = async (req, res) => {
-    const {id} = req.query;
- 
-    const result = await getConnection()
-      .createQueryBuilder()
-      .delete()
-      .from(Comment)
-      .where("id = :id", {id})
-      .execute();
- 
-    res.send(result);
-  }
+function initComment() {
+    var commentEmpty = $('div[ux-name="commentEmpty"]');
+    var comment = $this.findName('comment');
+    var userinfo;
+    $ux.data.query({
+        id: 'BMP_IDEA_VIEW.GET.COMMENT',
+        version: '00001',
+        parameter: {
+            IDEAID: IDEAID
+        },
+        reply: function(e) {
+            commentEmpty.html('');
+            var data = e.result;
+            for (var i = 0; i < data.length; i++) {
+                var user = data[i].DEPARTMENT + ' ) ' + data[i].USERNAME;
+                var content = data[i].CONTENT;
+                var time = data[i].CREATEDTIME;
+                var rid = data[i].REPLYID;
+                var seq = data[i].SEQ;
+                var isme;
+                if (data[i].USERID == $ux.user.id()) {
+                    isme = 'Y';
+                } else {
+                    isme = 'N';
+                }
+                if (data[i].SEQ == 0) {
+                    commentEmpty.append(makeCommentTable(user, content, time, rid, isme));
+                } else {
+                    commentEmpty.append(makeReReplytable(user, rid, content, time, isme, seq));
+                }
+
+            }
+            //totalCommentLabel.tool().setValue('전체 댓글 ' + $('div[ux-name="commentEmpty"] table').length + ' 건');
+            if (replyCount())
+                totalCommentLabel.tool().setValue('ㅤㅤ전체 댓글 ' + replyCount() + ' 건');
+            else
+                totalCommentLabel.tool().setValue('ㅤㅤ전체 댓글 0 건');
+            /*댓글 기능*/
+            $('button[btnType="reply"]').click(function(e) {
+                var parentTable = this.parentElement.parentElement.parentElement.parentElement;
+                var rid = parentTable.id.split('replyIdNo')[1];
+                $(parentTable).after(makeReReply(user, rid));
+                var length = $('div[ux-name="commentEmpty"] table').length;
+                var top = 60 * length + 855;
+                var orignTop = replyEmpty.tool().setTopPositionValue(top + 'px');
+                //대댓글달기 취소
+                $('button[btnType="reCancle"]').click(function(er) {
+                    this.parentElement.parentElement.parentElement.parentElement.remove();
+                    var length = $('div[ux-name="commentEmpty"] table').length;
+                    var top = 60 * length + 855;
+                    var orignTop = replyEmpty.tool().setTopPositionValue(top + 'px');
+                });
+                //대댓글 등록하기
+                $('button[btnType="reCommit"]').click(function(er) {
+
+                    var rid = this.parentElement.parentElement.parentElement.parentElement.id.split('replyIdNo')[1];
+                    var content = $('#commentCommit')[0].value;
+                    $ux.cjMessage.confirm('댓글을 등록하시겠습니까?', null, function() {
+                        $ux.request({
+                            name: 'BmpIdeaSaveReComment',
+                            value: {
+                                REPLYID: rid,
+                                CONTENT: content,
+                                IDEAID: IDEAID
+                            },
+                            reply: function(e) {
+                                initComment();
+
+                            }
+                        });
+                    });
+                });
+            });
+            //댓글 수정하기
+            $('button[btnType="edit"]').click(function(err) {
+                var ta = this.parentElement.parentElement.querySelector('textarea');
+                var editBtn = this.parentElement.parentElement.querySelector('button[btnType="edit"]');
+                var cancleBtn = this.parentElement.parentElement.querySelector('button[btnType="reply"]');
+                var editBtnHidden = this.parentElement.parentElement.querySelector('button[btnType="editHidden"]');
+                var cancleBtnHidden = this.parentElement.parentElement.querySelector('button[btnType="replyHidden"]');
+                var delBtn = this.parentElement.parentElement.querySelector('button[btnType="del"]');
+                $(ta).addClass('bmp-idea-view-rere-textarea');
+                $(ta).removeClass('bmp-idea-view-common-textarea');
+                ta.readOnly = false;
+
+                $(delBtn.parentElement).hide();
+                $(editBtn.parentElement).hide();
+                $(cancleBtn.parentElement).hide();
+                //$(editBtnHidden).show();
+                //$(cancleBtnHidden).show();
+                $(editBtnHidden.parentElement).css('display', 'table-cell');
+                $(cancleBtnHidden.parentElement).css('display', 'table-cell');
+                $('button[btnType="replyHidden"]').click(function(errr) {
+                    initComment();
+
+                });
+                $('button[btnType="editHidden"]').click(function(errr) {
+                    var rid = this.parentElement.parentElement.parentElement.parentElement.id.split('replyIdNo')[1];
+                    var content = $('#commonTextareaNo' + rid)[0].value;
+                    $ux.cjMessage.confirm('수정하시겠습니까?', null, function() {
+                        $ux.request({
+                            name: 'BmpIdeaEditComment',
+                            value: {
+                                REPLYID: rid,
+                                CONTENT: content,
+                                IDEAID: IDEAID
+                            },
+                            reply: function(e) {
+                                initComment();
+
+                            }
+                        });
+                    });
+                });
+            });
+            //댓글 삭제하기
+            $('button[btnType="del"]').click(function(e) {
+                var rid = this.parentElement.parentElement.parentElement.parentElement.id.split('replyIdNo')[1];
+                var content = this.parentElement.parentElement.querySelector('textarea').value;
+                //var seq = this.parentElement.parentElement.querySelector('td#reSeq').innerText;
+                $ux.cjMessage.confirm('삭제하시겠습니까?', null, function() {
+                    $ux.data.query({
+                        id: 'BMP_IDEA_VIEW.REPLY.DELETE',
+                        version: '00001',
+                        parameter: {
+                            IDEAID: IDEAID,
+                            REPLYID: rid
+                        },
+                        reply: function(e) {
+                            $ux.messageBox('삭제되었습니다.', '');
+                            initComment();
+
+                        }
+                    });
+                });
+            });
+            //대댓글 수정하기
+            $('button[btnType="rereEdit"]').click(function(e) {
+                var ta = this.parentElement.parentElement.querySelector('textarea');
+                var editBtn = this.parentElement.parentElement.querySelector('button[btnType="rereEdit"]');
+                var delBtn = this.parentElement.parentElement.querySelector('button[btnType="rereDel"]');
+                var editBtnHidden = this.parentElement.parentElement.querySelector('button[btnType="rereEditHidden"]');
+                var cancleBtnHidden = this.parentElement.parentElement.querySelector('button[btnType="rereCancleHidden"]');
+
+                $(ta).addClass('bmp-idea-view-rere-textarea');
+                $(ta).removeClass('bmp-idea-view-common-textarea-re');
+                ta.readOnly = false;
+                $(editBtn.parentElement).hide();
+                $(delBtn.parentElement).hide();
+                $(editBtnHidden.parentElement).css('display', 'table-cell');
+                $(cancleBtnHidden.parentElement).css('display', 'table-cell');
+                //$(editBtnHidden).show();
+                //$(cancleBtnHidden).show();
+
+                $('button[btnType="rereCancleHidden"]').click(function(errr) {
+                    initComment();
+                });
+                $('button[btnType="rereEditHidden"]').click(function(err) {
+
+                    var rid = this.parentElement.parentElement.parentElement.parentElement.id.split('replyIdNo')[1];
+                    var content = this.parentElement.parentElement.querySelector('textarea').value;
+                    var seq = this.parentElement.parentElement.querySelector('td#reSeq').innerText;
+                    $ux.cjMessage.confirm('수정하시겠습니까?', null, function() {
+                        $ux.request({
+                            name: 'BmpIdeaEditReComment',
+                            value: {
+                                REPLYID: rid,
+                                CONTENT: content,
+                                SEQ: seq,
+                                IDEAID: IDEAID
+                            },
+                            reply: function(e) {
+                                initComment();
+
+                            }
+                        });
+                    });
+                });
+            });
+            //대댓글 삭제하기
+            $('button[btnType="rereDel"]').click(function(e) {
+
+                var rid = this.parentElement.parentElement.parentElement.parentElement.id.split('replyIdNo')[1];
+                var content = this.parentElement.parentElement.querySelector('textarea').value;
+                var seq = this.parentElement.parentElement.querySelector('td#reSeq').innerText;
+                $ux.cjMessage.confirm('삭제하시겠습니까?', null, function() {
+                    $ux.request({
+                        name: 'BmpIdeaDelReComment',
+                        value: {
+                            REPLYID: rid,
+                            SEQ: seq,
+                            IDEAID: IDEAID
+                        },
+                        reply: function(e) {
+                            initComment();
+
+                        }
+                    });
+                });
+            });
+            var length = $('div[ux-name="commentEmpty"] table').length;
+            var top = 60 * length + 855;
+            var orignTop = replyEmpty.tool().setTopPositionValue(top + 'px');
+        }
+    });
+    replyCount();
+
 }
